@@ -1,0 +1,1 @@
+export { DynamoDBTestHelper } from "./DynamoDBTestHelper";
