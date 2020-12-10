@@ -1,6 +1,7 @@
 {
     "name": "dynamodb-local-test-helper",
     "description": "Helper for working with DynamoDB local in Docker. This will spin up a new instance of DynamoDB local in a container and return a client that points to that instance.",
+    "version": "1.0.4",
     "keywords": [
         "aws",
         "dynamodb",
@@ -14,12 +15,11 @@
         "type": "git",
         "url": "https://github.com/jasonwadsworth/dynamodb-local-test-helper"
     },
-    "version": "1.0.3",
     "main": "index.js",
     "types": "index.d.ts",
     "license": "MIT",
     "scripts": {
-        "build": "./node_modules/.bin/tsc && cp package.json ./lib",
+        "build": "./node_modules/.bin/tsc && cp package.json ./lib && cp README.md ./lib",
         "package": "npm ci && npm run build && npm pack ./lib"
     },
     "devDependencies": {
