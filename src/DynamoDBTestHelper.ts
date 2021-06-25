@@ -3,51 +3,65 @@ import { Container } from 'node-docker-api/lib/container';
 import AWS from 'aws-sdk';
 import getPort from 'get-port';
 import { nanoid } from 'nanoid'
-
+import { Mutex } from 'async-mutex';
 export class DynamoDBTestHelper {
+    private readonly mutex = new Mutex();
     private docker = new Docker({ socketPath: '/var/run/docker.sock' });
-    private port: number;
+    public port: number;
     private container: Container;
     public dynamoDbClient: AWS.DynamoDB;
     public documentClient: AWS.DynamoDB.DocumentClient;
-    private tableName: string;
 
     public async init(): Promise<void> {
-        await this.docker.image.create({}, {
-            fromImage: 'amazon/dynamodb-local',
-            tag: 'latest'
-        })
-            .then((stream) => this.promisifyStream(stream))
-            .then(() => this.docker.image.get('amazon/dynamodb-local').status())
-            .then((image) => image.history())
-            .then((events) => console.debug(events))
-            .catch((error) => console.debug(error));
+        if (this.container) {
+            return;
+        }
 
-        this.port = await getPort();
-
-        this.container = await this.docker.container.create({
-            Image: 'amazon/dynamodb-local',
-            name: `dynamodb-local-${nanoid()}`,
-            HostConfig: {
-                PortBindings: {
-                    "8000/tcp": [ // port inside of docker container
-                        { "HostPort": `${this.port}` } // port on host machine
-                    ]
-                }
+        const release = await this.mutex.acquire();
+        try {
+            if (this.container) {
+                return;
             }
-        });
 
-        await this.container.start();
+            await this.docker.image.create({}, {
+                fromImage: 'public.ecr.aws/mobileup/dynamodb-local:latest',
+                tag: 'latest'
+            })
+                .then((stream) => this.promisifyStream(stream))
+                .then(() => this.docker.image.get('public.ecr.aws/mobileup/dynamodb-local:latest').status())
+                .then((image) => image.history())
+                .then(() => { })
+                .catch((error) => console.error('Error downloading image.', error));
 
-        this.dynamoDbClient = new AWS.DynamoDB({
-            region: 'localhost',
-            endpoint: new AWS.Endpoint(`http://localhost:${this.port}`),
-        });
+            this.port = await getPort();
 
-        this.documentClient = new AWS.DynamoDB.DocumentClient({
-            region: 'localhost',
-            endpoint: new AWS.Endpoint(`http://localhost:${this.port}`),
-        });
+            this.container = await this.docker.container.create({
+                Image: 'public.ecr.aws/mobileup/dynamodb-local:latest',
+                name: `dynamodb-local-${nanoid()}`,
+                HostConfig: {
+                    PortBindings: {
+                        "8000/tcp": [ // port inside of docker container
+                            { "HostPort": `${this.port}` } // port on host machine
+                        ]
+                    }
+                }
+            });
+
+            await this.container.start();
+
+            this.dynamoDbClient = new AWS.DynamoDB({
+                region: 'localhost',
+                endpoint: new AWS.Endpoint(`http://localhost:${this.port}`),
+            });
+
+            this.documentClient = new AWS.DynamoDB.DocumentClient({
+                region: 'localhost',
+                endpoint: new AWS.Endpoint(`http://localhost:${this.port}`),
+            });
+        }
+        finally {
+            release();
+        }
     }
 
     public async finish(): Promise<void> {
@@ -58,9 +72,9 @@ export class DynamoDBTestHelper {
     }
 
     private promisifyStream = (stream: any) => new Promise((resolve, reject) => {
-        stream.on('data', (d: any) => console.debug(d.toString()))
-        stream.on('end', resolve)
-        stream.on('error', reject)
+        stream.on('data', (d: any) => { });
+        stream.on('end', resolve);
+        stream.on('error', reject);
     })
 
 }
